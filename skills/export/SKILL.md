@@ -57,9 +57,33 @@ Copy `/tmp/NAME.plugin` to:
 If writing to the plugin root fails (read-only install location), save to Downloads only
 and tell the user: "Saved to Downloads — copy `NAME.plugin` into your git clone to commit it."
 
-### 4 — Report
+### 4 — Sync the scheduled task
 
-List the files packaged and those excluded. Confirm both output paths. Then say:
+Check whether a scheduled task named `triage` exists at `~/Documents/Claude/Scheduled/triage/SKILL.md`.
+
+If it exists, overwrite it with a condensed version of `commands/triage.md` — same content as the command but with the personal workspace config baked in from `skills/triage/references/workspace-config.md` (identity, board IDs, channel rules, key people, Jira filters, email voice). This keeps the scheduled task in sync with the plugin without requiring a manual copy.
+
+Use this structure for the scheduled task SKILL.md:
+```
+---
+name: triage
+description: [from commands/triage.md frontmatter]
+---
+
+[Identity, board config, channel rules, key people, Jira filters, Gmail/Drive settings, email voice — all inlined from workspace-config.md]
+
+---
+
+## Steps
+
+[Steps 1–9 from commands/triage.md, with Monday.com branches removed since backend is Notion]
+```
+
+If the scheduled task path does not exist, skip silently — user may not have set one up.
+
+### 5 — Report
+
+List the files packaged and those excluded. Confirm both output paths. If the scheduled task was synced, note: "✅ Scheduled task SKILL.md updated." Then say:
 
 > "Commit `NAME.plugin` alongside the source files — anyone cloning the repo can open it
 > to import the plugin. Run `/export` again any time you make changes."
