@@ -82,7 +82,35 @@ Process choices:
 
 ---
 
-### 4. Report
+### 4. Weekly meeting summary
+
+Call `list_events` for the past 7 days (from last Monday to today). Filter to events where you are an attendee (not just organiser). Exclude all-day events and declined events.
+
+Compute:
+- **Total meeting time**: sum of event durations in hours
+- **Meeting count**: total distinct meetings
+- **Recurring vs one-off**: split by whether the event has a recurrence rule
+- **Busiest day**: day with the most meeting time
+- **Largest blocks of focus time**: gaps of 90+ minutes between meetings, per day — count how many you had across the week
+- **1:1s this week**: events with exactly 2 attendees
+
+Format as a compact summary:
+
+```
+📅 Meetings this week
+
+[N] meetings — [Xh Ym] total
+[N] recurring · [N] one-off
+Busiest day: [day] ([Xh])
+Focus blocks (90m+): [N]
+1:1s: [N]
+```
+
+If Google Calendar is not connected, skip this section silently.
+
+---
+
+### 5. Report
 
 ```
 🔍 Weekly review — [date]
@@ -95,6 +123,9 @@ Board sweep:
 - [N] stale Tier 2 cards resolved
 - [N] cards snoozed
 - [N] cards kept
+
+📅 Meetings this week
+[meeting summary from step 4]
 
 [Open Triage Board]([BOARD_URL])
 ```

@@ -78,6 +78,23 @@ Keep each line to one sentence. Omit sections if empty. If there are no blockers
 
 ---
 
-### 4. Close out
+### 4. Today's meetings
+
+Call `list_events` for today. Filter to events where you are an attendee and have not declined. Exclude all-day events.
+
+List them in time order as a simple schedule:
+
+```
+📅 Today
+- 09:30 · Weekly sync (45m)
+- 11:00 · 1:1 with Baltej (30m)
+- 14:00 · Sprint planning (1h)
+```
+
+If no meetings: omit the section. If Google Calendar is not connected: skip silently.
+
+---
+
+### 5. Close out
 
 Link to the board at the end of the summary: [Open Triage Board]([BOARD_URL])
