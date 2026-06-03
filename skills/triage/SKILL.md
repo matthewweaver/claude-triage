@@ -81,11 +81,44 @@ Summary: [One sentence — what is this asking or saying?]
 Action: [What you should do, or "None — FYI"]
 ```
 
+## Email Classification Rules
+
+Apply these when triaging Gmail threads (snippet-first):
+
+**Auto-Tier 1 from snippet alone:**
+- Time-sensitive language in subject/snippet: "urgent", "ASAP", "by EOD", "action required", "deadline"
+- Invoices, payment requests, or contract signatures
+- Security or fraud alerts
+- Replies in a thread you started (someone responded to your email)
+- Direct question addressed to you personally
+
+**Auto-Tier 3 from snippet alone (no `get_thread` needed):**
+- Sender is a marketing or newsletter domain
+- Subject contains: "Unsubscribe", "newsletter", "digest", "weekly roundup", "promo", "%  off"
+- Recipient count is 10+ and you are cc'd (not addressed directly)
+- Social network notifications (LinkedIn, Twitter/X, etc.)
+- Automated system emails with no decision required (deploys, status pages, receipts)
+
+**Call `get_thread` only for:**
+- Ambiguous Tier 1 or Tier 2 candidates
+- Meeting recording emails (to extract action items)
+- Any email where sender is in your Key People list
+
 ## Reply Drafting
 
-When asked to draft a reply (e.g. "draft reply to #3"), use the full thread context to write a response in the user's Slack voice:
+### Slack replies
+
+When asked to draft a reply to a Slack item (e.g. "draft reply to #3"), use the full thread context:
 - Casual but clear — not formal email language
 - Short — 1–3 sentences unless complex
 - Direct — lead with the answer, then context
 - Thread reply by default (not channel post)
-- Present the draft and wait for the user to confirm before sending
+- Present the draft and wait for the user to confirm before sending via `slack_send_message`
+
+### Email replies
+
+When asked to draft a reply to an email item, read the full thread via `get_thread` if not already fetched. Then:
+- Read the `## Email Voice` section in `workspace-config.md` for the user's preferred style and sign-off
+- Write the reply following those guidelines
+- Include a subject line (use "Re: [original subject]")
+- Present the draft and wait for the user to confirm before sending via `create_draft`

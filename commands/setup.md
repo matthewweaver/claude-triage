@@ -18,7 +18,16 @@ Then proceed section by section.
 
 ---
 
-## Section 1 — Monday.com Board
+## Section 1 — Board Backend
+
+Ask:
+
+```
+AskUserQuestion: "Which Kanban board would you like to use for triage?"
+Options: Monday.com / Notion
+```
+
+### If Monday.com
 
 Ask:
 
@@ -56,6 +65,49 @@ After creation, call `get_board_info` on the new board to capture all group IDs 
 Ask: "What's your board ID or URL?" Extract the board ID. Call `get_board_info` to capture all group IDs and column IDs. Confirm: "✅ Triage Board connected."
 
 If Monday.com isn't connected: "Monday.com isn't connected yet. Go to Customize → Connectors, connect Monday.com, then run `/triage setup` again."
+
+Save to workspace-config.md:
+- `board_backend: monday`
+- All board/group/column IDs
+
+### If Notion
+
+Check if the Notion connector is available (try `notion-search` with a simple query).
+
+- **If not connected**: "Notion isn't connected yet. Go to Customize → Connectors, connect Notion, then run `/triage setup` again."
+- **If connected**: "✅ Notion is connected."
+
+Ask:
+
+```
+AskUserQuestion: "Do you have an existing Triage database in Notion, or should I create one?"
+Options: Create a new database for me / I have an existing database
+```
+
+**If creating a new database:**
+
+Call `notion-create-database` with name "Triage Board" and these properties:
+- Title property: `Name`
+- Select property: `Status` — options: `Tier 1 — Reply`, `Tier 2 — Review`, `Today`, `Soon`, `Backlog`, `Done`, `P0 — Fire 🔥`
+- Select property: `Group` — same options as Status
+- Select property: `Urgency` — options: `Critical 🔥`, `High`, `Medium`, `Low`
+- Select property: `Source` — options: `DM`, `@mention`, `Thread reply`
+- Rich text property: `Channel`
+- URL property: `Link`
+- Date property: `Triaged at`
+- Date property: `Due date`
+
+After creation, call `notion-fetch` on the new database URL to get the `data_source_id` (collection ID). Confirm: "✅ Triage Board created in Notion."
+
+**If existing database:**
+
+Ask: "What's your Notion database URL or ID?" Call `notion-fetch` on it to get the `data_source_id`. Confirm: "✅ Triage Board connected."
+
+Save to workspace-config.md:
+- `board_backend: notion`
+- `Board ID`: the database ID
+- `Board URL`: the Notion database URL
+- `Database collection ID`: the `data_source_id` from notion-fetch
 
 ---
 
@@ -189,6 +241,26 @@ Options: 3 days / 7 days (recommended) / 14 days / No due date
 
 ---
 
+## Section 6b — Email Voice
+
+Ask:
+
+```
+AskUserQuestion: "When I draft email replies for you, what tone should I use?"
+Options: Direct and concise (lead with the answer) / Warm and conversational / Formal and professional / Same as Slack (casual)
+```
+
+Ask:
+
+```
+AskUserQuestion: "How should I sign off emails?"
+Free text input (e.g. "Matt", "Thanks, Matt", "Best, Matthew")
+```
+
+Save the style and sign-off to workspace-config under `## Email Voice`.
+
+---
+
 ## Section 7 — Write workspace-config.md
 
 Using all the answers collected, write a fully populated `skills/triage/references/workspace-config.md` file. Use this structure:
@@ -200,9 +272,15 @@ Using all the answers collected, write a fully populated `skills/triage/referenc
 - **Slack display name**: [name]
 - **Slack user ID**: [discovered user ID]
 
-## Monday.com Board
+## Board Backend
+- **Backend**: [monday | notion]
 - **Board ID**: [board ID]
 - **Board URL**: [board URL]
+[If notion, also include:]
+- **Database collection ID**: [data_source_id from notion-fetch]
+
+## Monday.com Board
+[Include this section only if backend = monday]
 
 ### Group IDs
 | Group | ID |
@@ -255,6 +333,13 @@ Using all the answers collected, write a fully populated `skills/triage/referenc
 
 ## Google Drive Settings
 - **Meeting notes extraction**: [Enabled / Disabled]
+- **Doc patterns**: Title contains "Transcript" + date, or title starts with "Notes –"
+
+## Email Voice
+- [Tone — e.g. Direct and concise, warm but professional]
+- [Length — e.g. Short, 2–4 sentences for most replies]
+- [Norms — e.g. First names always, no filler phrases]
+- Sign off: [e.g. "Matt" or "Thanks, Matt"]
 
 ## Default Preferences
 - **Triage window**: [their choice]
@@ -265,7 +350,51 @@ After writing the file, confirm: "✅ Your workspace config has been saved."
 
 ---
 
-## Section 8 — Done
+## Section 8 — Scheduled Triage
+
+Ask:
+
+```
+AskUserQuestion: "Would you like triage to run automatically on a schedule?"
+Options: Yes, set a schedule / No, I'll run it manually
+```
+
+**If No**: skip to Section 9.
+
+**If Yes**:
+
+```
+AskUserQuestion: "How often should triage run?"
+Options: Every weekday morning / Every day (including weekends) / Every Monday morning / Custom schedule
+```
+
+If Custom: ask for their preferred time and days as free text, then convert to a cron expression.
+
+Default times: morning runs at 08:00 local time.
+
+**Create or update the scheduled task:**
+
+First, check if a task with `taskId: "triage"` already exists by calling `list_scheduled_tasks`. 
+
+- **If it exists**: use `update_scheduled_task` with `taskId: "triage"` — update the `prompt` (to sync any plugin changes) and `cronExpression` (if they want to change the schedule). Tell the user: "✅ Scheduled triage task updated."
+- **If it doesn't exist**: use `create_scheduled_task` with the values below. Tell the user: "✅ Scheduled triage task created."
+
+Task values:
+- `taskId`: `"triage"`
+- `description`: `"Run triage across Slack, Jira, Gmail and Drive and update the Kanban board"`
+- `cronExpression`: per their choice above (e.g. `"0 8 * * 1-5"` for weekdays at 8am)
+- `prompt`: construct a **fully self-contained** version of the triage instructions by reading `commands/triage.md` and inlining the current `workspace-config.md` values. The prompt must not rely on reading files at runtime, since scheduled tasks start fresh. Include:
+  - All triage steps from `commands/triage.md`
+  - The user's board backend, board ID, and all column/group IDs or Notion collection ID
+  - The user's Slack ID, Jira channel ID, channel priorities, key people
+  - Gmail and Drive settings
+  - The classification rules from `skills/triage/SKILL.md`
+
+This means re-running setup (e.g. after a plugin update) will also refresh the scheduled task prompt with any updated instructions.
+
+---
+
+## Section 9 — Done
 
 Tell the user:
 
@@ -273,6 +402,7 @@ Tell the user:
 > - [list which connectors are active]
 > - [N] priority channels, [N] watch channels
 > - [N] key people
+> - Scheduled triage: [schedule description, or "manual only"]
 >
 > Run `/triage` to do your first triage pass. You can edit your preferences at any time by editing `workspace-config.md`, or re-run `/triage setup` to reconfigure from scratch."
 

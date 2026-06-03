@@ -1,65 +1,50 @@
 ---
-description: Read your Slack, Jira, Gmail and Google Drive, classify everything into tiers, and update your Monday.com board. Tier 1 items are numbered so you can say "draft reply to #2".
+description: Read your Slack, Jira, Gmail and Google Drive, classify everything into tiers, and update your board (Monday.com or Notion). Tier 1 items are numbered so you can say "draft reply to #2".
 ---
 
 # /triage
 
 Reads all your sources, classifies messages into three tiers, creates board cards for Tier 1 and Tier 2, and summarises Tier 3 noise inline. Tier 1 items are numbered for reply drafting.
 
-## Before you start
-
-Read `skills/triage/references/workspace-config.md`. It contains your personal board ID, group IDs, column IDs, Slack user ID, Jira channel ID, channel priorities, and key people. All API calls below use values from that file.
-
-If workspace-config.md is missing or empty: "Run `/triage setup` first to configure your workspace."
-
-## Board structure reference
-
-Your board has these groups and columns (exact IDs are in workspace-config.md):
-
-| Group | Purpose |
-|---|---|
-| P0 — Fire 🔥 | Critical production incidents |
-| Today | Items due or promoted today |
-| Tier 1 — Reply | Needs your response |
-| Tier 2 — Review | Needs your eyes, no reply required |
-| Soon | Upcoming items |
-| Backlog | Low priority |
-| Done | Completed |
-
-Columns:
-- **Status/Kanban** — labels: `Tier 1 — Reply`, `Tier 2 — Review`, `Today`, `Soon`, `Done`
-- **Urgency** — labels: `Critical 🔥`, `High`, `Medium`, `Low`
-- **Source** — labels: `DM`, `@mention`, `Thread reply`
-- **Channel** (text)
-- **Link** (link)
-- **Triaged at** (date)
-- **Due date** (date)
-
 ---
 
 ## Steps
 
-### 1. Load config and board
+### 0. Read workspace config
 
-Read `skills/triage/references/workspace-config.md` to get:
-- `BOARD_ID`, `BOARD_URL`
-- Group IDs: `GROUP_P0`, `GROUP_TODAY`, `GROUP_TIER1`, `GROUP_TIER2`, `GROUP_SOON`, `GROUP_BACKLOG`, `GROUP_DONE`
-- Column IDs: `COL_STATUS`, `COL_URGENCY`, `COL_SOURCE`, `COL_CHANNEL`, `COL_LINK`, `COL_TRIAGED_AT`, `COL_DUE`
-- `MY_SLACK_ID`, `JIRA_CHANNEL_ID`, `JIRA_BOT_ID`
+Read `skills/triage/references/workspace-config.md`. Identify the **board backend** (`monday` or `notion`) and the **Board ID** / **Collection ID**. All board operations below branch on this value.
 
-Call `get_board_items_page` on `BOARD_ID` with `includeColumns: true`, fetching `COL_TRIAGED_AT`, `COL_DUE`, and `COL_LINK`. Collect all existing link URLs as an exclusion set.
+If workspace-config.md is missing or empty: "Run `/triage setup` first to configure your workspace."
 
-- **Time window**: most recent "Triaged at" date on any card → use as the fetch start. Default to last 24 hours if board is empty.
+---
+
+### 1. Load the board
+
+**Monday.com:** Call `get_board_items_page` on the configured Board ID with `includeColumns: true`, fetching `COL_TRIAGED_AT`, `COL_DUE`, and `COL_LINK`. Collect all existing link URLs as an exclusion set.
+
+**Notion:** Call `notion-fetch` on the configured database ID to retrieve all pages. For each page, extract the `Link` property URL into the exclusion set, and find the most recent `Triaged at` date.
+
+- **Time window**: most recent "Triaged at" date on any card → use as the Slack/Gmail fetch start. Default to last 24 hours if board is empty.
 
 If board not found: "Triage Board not found — run `/triage setup` first."
 
+---
+
 ### 2. Promote due items to Today
 
-Find items in **Soon** (`GROUP_SOON`) or **Backlog** (`GROUP_BACKLOG`) with a "Due date" on or before today. For each, `move_item_to_group` → `GROUP_TODAY` and set `COL_STATUS` to `{"label": "Today"}`.
+Find items in **Soon** or **Backlog** with a "Due date" on or before today.
+
+**Monday.com:** For each, `move_item_to_group` → `GROUP_TODAY` and set `COL_STATUS` to `{"label": "Today"}`.
+
+**Notion:** For each matching page (Status = `Soon` or `Backlog`, Due date ≤ today), call `notion-update-page` setting Status = `Today`.
+
+---
 
 ### 3. Clear Done items
 
-Find all items where Status = "Done" or in group `GROUP_DONE`. For each, `delete_item`. Add their links to the exclusion set.
+**Monday.com:** Find all items where Status = "Done" or in group `GROUP_DONE`. For each, `delete_item`. Add their links to the exclusion set.
+
+**Notion:** Find all pages where Status = `Done`. Add their link URLs to the exclusion set, then call `notion-update-page` to archive each (`archived: true`).
 
 ---
 
@@ -88,13 +73,21 @@ Apply channel-priority rules from `workspace-config.md` to inform tier classific
 
 Use tier/urgency rules from `workspace-config.md` Jira filters. Set **Channel** = `Jira`, use the Jira ticket URL as the link.
 
-**C. Gmail (unread inbox, no Jira/Confluence)**
+**C. Gmail (unread inbox, no Jira/Confluence) — snippet-first approach**
 
-`search_threads` with `is:unread in:inbox after:YYYY/MM/DD -from:jira -subject:[JIRA] -from:confluence`. Skip newsletters, marketing, bulk emails.
+`search_threads` with `is:unread in:inbox after:YYYY/MM/DD -from:jira -subject:[JIRA] -from:confluence`.
 
-For **meeting recording emails**: `get_thread` → extract actions → create Soon cards with due dates (see step D logic).
+> ⚠️ High-volume warning: if the query returns 50+ threads, report the count and ask "That's a lot — want me to triage all of them, or just the last 24 hours?" before proceeding.
 
-For other direct emails: classify by recipient count and content.
+**Classify from snippet first** — do NOT call `get_thread` for every email:
+- Read subject, sender, snippet, and recipient count from the search results
+- Auto-Tier 3: marketing, newsletters, bulk sends (10+ recipients), social notifications
+- Auto-Tier 1: time-sensitive language ("urgent", "by EOD", "ASAP"), invoices, fraud/security alerts, replies in threads you started
+- For ambiguous Tier 1 and Tier 2 candidates only: call `get_thread` to read the full body and confirm classification
+
+For **meeting recording emails**: `get_thread` → extract action items → create Soon cards (see step 6 logic).
+
+Skip newsletters, marketing, bulk emails.
 
 **D. Google Drive — meeting notes and transcripts**
 
@@ -102,12 +95,7 @@ For other direct emails: classify by recipient count and content.
 - Title contains "Transcript" + a date
 - Title starts with "Notes –"
 
-Skip any whose view URL is in the exclusion set. For each, `read_file_content` → extract action items assigned to you or unowned → create one **Soon** card per action with:
-- Group: `GROUP_SOON`
-- Status: `{"label": "Soon"}`
-- Urgency: `{"label": "Medium"}`
-- Due date: deadline from text if found, else 7 days from today
-- Link: Google Doc view URL
+Skip any whose view URL is in the exclusion set. For each, `download_file_content` with `exportMimeType: text/plain` → decode content → extract action items assigned to you or unowned → create one **Soon** card per action with due date from text if found, else per config default.
 
 ---
 
@@ -124,6 +112,8 @@ Assign an **Urgency** for all Tier 1 and Tier 2 items: Critical 🔥 / High / Me
 
 ### 6. Create board cards (Tier 1 and Tier 2 only)
 
+#### Monday.com
+
 **Tier 1** → group `GROUP_TIER1`
 **Tier 2** → group `GROUP_TIER2`
 **P0 / Critical production incident** → group `GROUP_P0`
@@ -137,6 +127,30 @@ Assign an **Urgency** for all Tier 1 and Tier 2 items: Critical 🔥 / High / Me
 | Channel | `COL_CHANNEL` | Channel or sender name |
 | Link | `COL_LINK` | `{"url": "...", "text": "..."}` |
 | Triaged at | `COL_TRIAGED_AT` | `{"date": "YYYY-MM-DD"}` |
+
+**Soon cards** (from Drive/Gmail actions):
+- Group: `GROUP_SOON`
+- Status: `{"label": "Soon"}`
+- Urgency: `{"label": "Medium"}`
+- Due date: from text or config default
+
+#### Notion
+
+Use `notion-create-pages` with `data_source_id` from workspace-config. Properties:
+
+| Field | Notion property | Value |
+|---|---|---|
+| Name | title | Concise one-line summary |
+| Status | select | `Tier 1 — Reply` / `Tier 2 — Review` / `Today` / `Soon` |
+| Group | select | `Tier 1 — Reply` / `Tier 2 — Review` / `P0 — Fire 🔥` / `Soon` |
+| Urgency | select | `Critical 🔥` / `High` / `Medium` / `Low` |
+| Source | select | `DM` / `@mention` / `Thread reply` |
+| Channel | rich_text | Channel or sender name |
+| Link | url | Permalink URL |
+| Triaged at | date | `date:Triaged at:start` = today's date (ISO 8601) |
+| Due date | date | `date:Due date:start` = from text or config default (Soon cards only) |
+
+**P0 / Critical**: set Group = `P0 — Fire 🔥`, Status = `P0 — Fire 🔥`.
 
 ---
 
@@ -165,36 +179,66 @@ Format:
 > - 3 Confluence digest emails
 >
 > Say "draft reply to #2" to draft a response to any Tier 1 item.
-> [Open your Triage Board](BOARD_URL)
+> Say "archive the noise" to archive the Tier 3 emails (requires explicit confirmation).
+> [Open your Triage Board]([BOARD_URL])
 
 If nothing actionable: "All clear — no new actionable messages."
 
 ---
 
-### 8. Token usage estimate
+### 7a. Archive offer (only if triggered by user)
+
+If the user says "archive the noise" or similar:
+
+1. List the Tier 3 emails you would archive (subject, sender).
+2. Ask for explicit confirmation: "Archive these [N] emails? This cannot be undone." — use `AskUserQuestion`.
+3. Only proceed after confirmation. Never auto-archive.
+
+---
+
+### 8. Reply drafting
+
+When asked to draft a reply (e.g. "draft reply to #3"), retrieve the full thread context and write a draft in the appropriate voice.
+
+**Slack replies** — use the Slack voice from SKILL.md:
+- Casual but clear, short (1–3 sentences), lead with the answer
+- Thread reply by default, not a channel post
+- Present the draft, wait for user confirmation before sending with `slack_send_message`
+
+**Email replies** — use the Email Voice from `workspace-config.md`:
+- Read the `## Email Voice` section for the user's preferred style
+- Present the draft with subject line
+- Wait for user confirmation before sending with `create_draft`
+
+---
+
+### 9. Token usage estimate
 
 After completing the run, estimate token consumption based on content volume.
 
 Track these counts during the run:
 - `slack_chars`: total characters in all Slack messages read (DMs, @mentions, Jira channel)
-- `email_chars`: total characters in all email snippets and thread bodies fetched
+- `jira_chars`: total characters in all Jira notification messages parsed
+- `email_snippet_chars`: characters in email snippets classified without `get_thread`
+- `email_full_chars`: characters in full email threads fetched via `get_thread`
 - `drive_chars`: total characters in all Google Doc content read
-- `board_chars`: total characters in all Monday.com API responses
-- `skill_overhead`: fixed ~4,000 tokens (skill instructions + classification logic loaded each run)
+- `board_chars`: total characters in all board API responses
+- `skill_overhead`: fixed ~4,000 tokens
 
 Print at the end of every triage summary:
 
 ```
 📊 Token estimate (this run)
-   Slack:         ~[slack_chars ÷ 4] tokens  ([N] messages)
-   Jira:          ~[jira_chars ÷ 4] tokens   ([N] notifications)
-   Gmail:         ~[email_chars ÷ 4] tokens  ([N] threads)
-   Drive:         ~[drive_chars ÷ 4] tokens  ([N] docs)
-   Board + API:   ~[board_chars ÷ 4] tokens
+   Slack:          ~[slack_chars ÷ 4] tokens  ([N] messages)
+   Jira:           ~[jira_chars ÷ 4] tokens   ([N] notifications)
+   Gmail snippets: ~[email_snippet_chars ÷ 4] tokens  ([N] threads)
+   Gmail full:     ~[email_full_chars ÷ 4] tokens  ([N] threads read in full)
+   Drive:          ~[drive_chars ÷ 4] tokens  ([N] docs)
+   Board + API:    ~[board_chars ÷ 4] tokens
    Skill overhead: ~4,000 tokens
    ─────────────────────────────────
-   Total input:   ~[sum] tokens
-   Output:        ~[count of cards created × 200 + response length ÷ 4] tokens
+   Total input:    ~[sum] tokens
+   Output:         ~[count of cards created × 200 + response length ÷ 4] tokens
 ```
 
 Note: these are estimates (÷4 heuristic). Actual usage visible in your Anthropic console under Usage. Typical light run: 5–10k tokens. Heavy run with multiple Drive docs: 20–40k tokens.

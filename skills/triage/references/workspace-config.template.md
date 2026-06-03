@@ -7,9 +7,14 @@
 - **Slack display name**: [Your display name in Slack]
 - **Slack user ID**: [e.g. U0123456789 — setup finds this automatically]
 
+## Board Backend
+- **Backend**: [monday | notion]
+- **Board ID**: [e.g. 1234567890 for Monday.com, or Notion database ID]
+- **Board URL**: [e.g. https://your-team.monday.com/boards/1234567890 or https://www.notion.so/...]
+- **Database collection ID**: [Notion only — data_source_id from notion-fetch, e.g. collection://xxxxxxxx-...]
+
 ## Monday.com Board
-- **Board ID**: [e.g. 1234567890]
-- **Board URL**: [e.g. https://your-team.monday.com/boards/1234567890]
+[Include this section only if Backend = monday]
 
 ### Group IDs
 | Group | ID |
@@ -82,6 +87,12 @@ DMs from these people are always Tier 1.
 ## Google Drive Settings
 - **Meeting notes extraction**: [Enabled / Disabled]
 - **Doc patterns**: Title contains "Transcript" + date, or title starts with "Notes –"
+
+## Email Voice
+- [Tone — e.g. Direct and concise, lead with the answer]
+- [Length — e.g. Short, 2–4 sentences for most replies]
+- [Norms — e.g. First names always, no filler phrases]
+- Sign off: [e.g. "Matt" or "Thanks, Matt"]
 
 ## Default Preferences
 - **Triage window**: [Since last run / Last 24 hours / Last 48 hours / Last week]
