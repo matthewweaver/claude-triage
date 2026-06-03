@@ -29,18 +29,23 @@ get the plugin `name` field.
 
 ### 2 — Build the .plugin file
 
-Run this bash command, substituting `PLUGIN_ROOT` and `NAME`:
+Zip only the known source paths explicitly (avoids capturing `.git`, build artefacts, or personal config):
 
 ```bash
 cd "PLUGIN_ROOT" && \
-zip -r "/tmp/NAME.plugin" . \
+zip -r "/tmp/NAME.plugin" \
+  .claude-plugin \
+  commands \
+  skills \
+  .mcp.json \
+  .gitignore \
+  README.md \
   --exclude "*/workspace-config.md" \
   --exclude "*/.DS_Store" \
-  --exclude "*.DS_Store" \
-  --exclude "*/__MACOSX/*" \
-  --exclude "*/.git/*" \
-  --exclude "*.plugin"
+  --exclude "*.DS_Store"
 ```
+
+This allowlist approach is safer than a denylist — `.git/`, personal config, and OS noise are excluded by not being listed, not by pattern matching.
 
 ### 3 — Save outputs
 

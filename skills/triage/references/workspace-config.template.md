@@ -13,6 +13,8 @@
 - **Board URL**: [e.g. https://your-team.monday.com/boards/1234567890 or https://www.notion.so/...]
 - **Database collection ID**: [Notion only — data_source_id from notion-fetch, e.g. collection://xxxxxxxx-...]
 
+> **Card IDs**: Each triage card is assigned a persistent 4-digit ID (e.g. `1042`) stored as the `Card ID` property in Notion. Reference cards by ID across sessions: "snooze 1042 until Monday", "send reply to 1042".
+
 ## Monday.com Board
 [Include this section only if Backend = monday]
 
@@ -67,6 +69,9 @@ DMs from these people are always Tier 1.
 | Person | Relationship |
 |---|---|
 | [Name] | [e.g. Manager, PM counterpart, direct report] |
+
+## GitHub
+- **GitHub username**: [your GitHub username, e.g. mweaver — used to find PRs awaiting your review]
 
 ## Jira Bot Filters
 - **Jira channel ID**: [Slack DM channel ID for Jira bot, e.g. D0123456789]

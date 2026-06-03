@@ -12,7 +12,11 @@ This is an interactive wizard. Work through each section in order. Ask one secti
 
 Greet the user and explain what setup does:
 
-> "I'll walk you through setting up your triage system. We'll connect your tools (Slack, Jira, Gmail, Google Drive) and configure which channels and people matter most to you. This saves to a config file so every future `/triage` run is personalised. Takes about 5 minutes."
+> "I'll walk you through setting up your triage system. We'll connect your tools (Slack, Jira, Gmail, Google Drive, GitHub) and configure which channels and people matter most to you. This saves to a config file so every future `/triage` run is personalised. Takes about 5 minutes."
+
+**Plugin update check:** Before starting, read the `version` field from `.claude-plugin/plugin.json`. Fetch `https://raw.githubusercontent.com/captify-mweaver/claude-triage/main/.claude-plugin/plugin.json` and compare versions. If the remote version is newer, notify the user:
+
+> "⬆️ A newer version of the triage plugin is available (vX.Y.Z → vA.B.C). You can pull the latest from git and reinstall before setup, or continue with the current version."
 
 Then proceed section by section.
 
@@ -88,16 +92,25 @@ Options: Create a new database for me / I have an existing database
 
 Call `notion-create-database` with name "Triage Board" and these properties:
 - Title property: `Name`
-- Select property: `Status` — options: `Tier 1 — Reply`, `Tier 2 — Review`, `Today`, `Soon`, `Backlog`, `Done`, `P0 — Fire 🔥`
-- Select property: `Group` — same options as Status
+- Select property: `Status` — options in this exact order: `Tier 1 — Reply`, `Tier 2 — Review`, `Today`, `On Hold`, `Backlog`, `Done`
+- Select property: `Group` — options: `P0 — Fire 🔥`, `Tier 1 — Reply`, `Tier 2 — Review`, `Today`, `On Hold`, `Backlog`, `Done`
 - Select property: `Urgency` — options: `Critical 🔥`, `High`, `Medium`, `Low`
 - Select property: `Source` — options: `DM`, `@mention`, `Thread reply`
 - Rich text property: `Channel`
 - URL property: `Link`
+- Rich text property: `Card ID`
 - Date property: `Triaged at`
 - Date property: `Due date`
 
-After creation, call `notion-fetch` on the new database URL to get the `data_source_id` (collection ID). Confirm: "✅ Triage Board created in Notion."
+After creation, call `notion-fetch` on the new database URL to get the `data_source_id` (collection ID) and the default view ID.
+
+Then call `notion-update-view` on the default view with:
+```
+GROUP BY "Status"; SHOW "Due date", "Channel", "Link", "Urgency", "Source"
+```
+This sets the Kanban grouping, shows all columns (including empty ones like Today and Backlog), and pins the key card properties.
+
+Confirm: "✅ Triage Board created in Notion."
 
 **If existing database:**
 
@@ -220,6 +233,23 @@ Check if Drive tools are available (try `list_recent_files`).
 
 - **If not connected**: "Open Customize → Connectors, enable the Google Drive connector, then say 'continue setup'."
 - **If connected**: "✅ Google Drive is connected."
+
+---
+
+## Section 5b — GitHub
+
+Ask:
+
+```
+AskUserQuestion: "Would you like to connect GitHub to surface PRs waiting for your review?"
+Options: Yes / No, skip GitHub
+```
+
+**If Yes**:
+
+Ask: "What's your GitHub username?" Save as `GITHUB_USERNAME` in workspace-config.
+
+Note: GitHub PR fetching uses web fetch to the GitHub API — no separate connector needed. If the repo is private, the user will need to add a GitHub personal access token to their `.mcp.json` under a GitHub MCP server.
 
 ---
 

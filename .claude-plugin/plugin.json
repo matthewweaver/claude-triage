@@ -1,6 +1,6 @@
 {
   "name": "triage",
-  "version": "1.2.1",
+  "version": "1.4.0",
   "description": "Turn Claude into your Chief of Staff, monitoring Slack, Gmail, Jira, and Drive — triaging what matters onto a Kanban board so you always know what needs your attention.",
   "author": {
     "name": "Matthew Weaver"

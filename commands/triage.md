@@ -1,5 +1,5 @@
 ---
-description: Read your Slack, Jira, Gmail and Google Drive, classify everything into tiers, and update your board (Monday.com or Notion). Tier 1 items are numbered so you can say "draft reply to #2".
+description: Read your Slack, Jira, Gmail, Google Drive and GitHub, classify everything into tiers, and update your board (Monday.com or Notion). Tier 1 items are numbered so you can say "draft reply to #2".
 ---
 
 # /triage
@@ -16,13 +16,15 @@ Read `skills/triage/references/workspace-config.md`. Identify the **board backen
 
 If workspace-config.md is missing or empty: "Run `/triage setup` first to configure your workspace."
 
+**Plugin update check:** Read the `version` field from `.claude-plugin/plugin.json`. Fetch `https://raw.githubusercontent.com/captify-mweaver/claude-triage/main/.claude-plugin/plugin.json` and compare. If the remote version is newer, append a note at the end of the triage report: "⬆️ Plugin update available (vX.Y.Z → vA.B.C) — run `/export` after pulling the latest from git."
+
 ---
 
 ### 1. Load the board
 
-**Monday.com:** Call `get_board_items_page` on the configured Board ID with `includeColumns: true`, fetching `COL_TRIAGED_AT`, `COL_DUE`, and `COL_LINK`. Collect all existing link URLs as an exclusion set.
+**Monday.com:** Call `get_board_items_page` on the configured Board ID with `includeColumns: true`, fetching `COL_TRIAGED_AT`, `COL_DUE`, and `COL_LINK`. Collect all existing link URLs as an exclusion set. Also collect the page ID and current Status of every existing Tier 1 and Tier 2 card for thread-awareness in step 6.
 
-**Notion:** Call `notion-fetch` on the configured database ID to retrieve all pages. For each page, extract the `Link` property URL into the exclusion set, and find the most recent `Triaged at` date.
+**Notion:** Call `notion-search` with `data_source_url` set to the configured **Database collection ID** (e.g. `collection://...`) and a broad query (use `"*"` or a common word like `"the"`), with `page_size: 25`. Paginate if needed (repeat until fewer than 25 results returned) to retrieve **all** pages. Do NOT use `notion-fetch` on the database ID — that returns only schema, not rows. For each page, extract the `Link` property URL into the exclusion set, and find the most recent `Triaged at` date. Also store each page's ID, Name, Status, Link, and `Card ID` for thread-awareness in step 6. Collect all existing Card ID values into a set so new IDs can be checked for uniqueness.
 
 - **Time window**: most recent "Triaged at" date on any card → use as the Slack/Gmail fetch start. Default to last 24 hours if board is empty.
 
@@ -40,17 +42,17 @@ Find items in **Soon** or **Backlog** with a "Due date" on or before today.
 
 ---
 
-### 3. Clear Done items
+### 3. Build exclusion set from Done items
 
-**Monday.com:** Find all items where Status = "Done" or in group `GROUP_DONE`. For each, `delete_item`. Add their links to the exclusion set.
+**Monday.com:** Find all items where Status = "Done" or in group `GROUP_DONE`. Collect their link URLs into the exclusion set (do not delete them).
 
-**Notion:** Find all pages where Status = `Done`. Add their link URLs to the exclusion set, then call `notion-update-page` to archive each (`archived: true`).
+**Notion:** Find all pages where Status = `Done`. Collect their link URLs into the exclusion set (do not archive them).
 
 ---
 
 ### 4. Fetch all sources
 
-Run all four fetches in parallel using the time window from step 1.
+Run all five fetches in parallel using the time window from step 1.
 
 **A. Slack — Human DMs and @mentions**
 
@@ -71,6 +73,8 @@ Apply channel-priority rules from `workspace-config.md` to inform tier classific
 >>> [comment snippet]
 ```
 
+⚠️ **Date validation (critical):** Each Jira bot message ends with a timestamp in brackets, e.g. `[2025-07-21 14:52:36 BST]`. This is the date the Jira activity actually occurred — NOT when Slack delivered it. Before classifying a message, extract this date and compare it to the triage window start. **Skip any message whose activity date is before the triage window**, even if the Slack message itself was delivered recently.
+
 Use tier/urgency rules from `workspace-config.md` Jira filters. Set **Channel** = `Jira`, use the Jira ticket URL as the link.
 
 **C. Gmail (unread inbox, no Jira/Confluence) — snippet-first approach**
@@ -85,7 +89,7 @@ Use tier/urgency rules from `workspace-config.md` Jira filters. Set **Channel** 
 - Auto-Tier 1: time-sensitive language ("urgent", "by EOD", "ASAP"), invoices, fraud/security alerts, replies in threads you started
 - For ambiguous Tier 1 and Tier 2 candidates only: call `get_thread` to read the full body and confirm classification
 
-For **meeting recording emails**: `get_thread` → extract action items → create Soon cards (see step 6 logic).
+For **meeting recording emails**: `get_thread` → extract action items → create Soon cards (see step 6 logic). Scan each action item for due date mentions and set `date:Due date:start` if found; leave blank otherwise.
 
 Skip newsletters, marketing, bulk emails.
 
@@ -95,7 +99,24 @@ Skip newsletters, marketing, bulk emails.
 - Title contains "Transcript" + a date
 - Title starts with "Notes –"
 
-Skip any whose view URL is in the exclusion set. For each, `download_file_content` with `exportMimeType: text/plain` → decode content → extract action items assigned to you or unowned → create one **Soon** card per action with due date from text if found, else per config default.
+Skip any whose view URL is in the exclusion set. For each, `download_file_content` with `exportMimeType: text/plain` → decode content → extract action items assigned to you or unowned → create one **Soon** card per action.
+
+When extracting action items, always scan for due date mentions (e.g. "by Friday", "before June 4", "EOD Thursday", "next week"). Convert any relative dates to an absolute ISO date using today's date. Set this as the `date:Due date:start` on the card. If no due date is mentioned, leave the Due date blank.
+
+**E. GitHub — PRs awaiting your review**
+
+If `GITHUB_USERNAME` is set in workspace-config, search for open PRs where you are a requested reviewer:
+
+Fetch `https://api.github.com/search/issues?q=is:open+is:pr+review-requested:[GITHUB_USERNAME]` using the GitHub connector or web fetch.
+
+For each PR:
+- Skip if the PR URL is in the exclusion set
+- Skip if you've already submitted a review (check `reviewed-by` in the query results)
+- Classify as **Tier 1** if the PR has been waiting for your review for more than 24 hours, or if the PR description contains urgent language
+- Classify as **Tier 2** if opened within the last 24 hours
+- Set **Channel** = `GitHub`, **Source** = `@mention`, use the PR URL as the link
+
+If GitHub is not configured: skip silently.
 
 ---
 
@@ -110,7 +131,13 @@ Assign an **Urgency** for all Tier 1 and Tier 2 items: Critical 🔥 / High / Me
 
 ---
 
-### 6. Create board cards (Tier 1 and Tier 2 only)
+### 6. Create or update board cards (Tier 1 and Tier 2 only)
+
+**Thread awareness — check before creating:** Before creating a new card, check whether an existing card on the board already has the same Link URL (from the data loaded in step 1). If a match is found:
+- Do not create a duplicate card
+- If the existing card's Status is `Tier 2 — Review` and the new classification is `Tier 1 — Reply`, **upgrade** it: update the Status and Urgency via `notion-update-page` / `change_item_column_values`, and add the new draft reply to the card body
+- If the existing card's Status is already `Tier 1 — Reply`, skip (card already exists, may have been updated)
+- Note the updated card in the report as "↑ upgraded" rather than "new"
 
 #### Monday.com
 
@@ -132,25 +159,53 @@ Assign an **Urgency** for all Tier 1 and Tier 2 items: Critical 🔥 / High / Me
 - Group: `GROUP_SOON`
 - Status: `{"label": "Soon"}`
 - Urgency: `{"label": "Medium"}`
-- Due date: from text or config default
+- Due date: from text only (leave blank if none stated)
 
 #### Notion
 
 Use `notion-create-pages` with `data_source_id` from workspace-config. Properties:
 
+**Assign a Card ID** for each new card: generate a random 4-digit number (1000–9999). Check it against the set of existing Card IDs collected in step 1. If it collides, generate another until unique. Store the session number → Card ID mapping for the report.
+
 | Field | Notion property | Value |
 |---|---|---|
 | Name | title | Concise one-line summary |
-| Status | select | `Tier 1 — Reply` / `Tier 2 — Review` / `Today` / `Soon` |
-| Group | select | `Tier 1 — Reply` / `Tier 2 — Review` / `P0 — Fire 🔥` / `Soon` |
+| Status | select | `Tier 1 — Reply` / `Tier 2 — Review` / `Today` / `On Hold` / `Backlog` |
+| Group | select | `Tier 1 — Reply` / `Tier 2 — Review` / `P0 — Fire 🔥` / `Today` / `On Hold` / `Backlog` |
 | Urgency | select | `Critical 🔥` / `High` / `Medium` / `Low` |
 | Source | select | `DM` / `@mention` / `Thread reply` |
 | Channel | rich_text | Channel or sender name |
 | Link | url | Permalink URL |
+| Card ID | rich_text | The 4-digit ID assigned above (e.g. `1042`) |
 | Triaged at | date | `date:Triaged at:start` = today's date (ISO 8601) |
-| Due date | date | `date:Due date:start` = from text or config default (Soon cards only) |
+| Due date | date | `date:Due date:start` = from text only (Soon cards only) |
 
 **P0 / Critical**: set Group = `P0 — Fire 🔥`, Status = `P0 — Fire 🔥`.
+
+**Tier 1 cards — draft reply in card body:**
+
+For every Tier 1 card, fetch the full thread context if not already retrieved (call `slack_read_thread` for Slack items, `get_thread` for email items), then write a suggested draft reply into the card's `content` field using Notion markdown.
+
+Use the voice rules from `workspace-config.md`:
+- **Slack items**: casual, short (1–3 sentences), lead with the answer
+- **Email items**: follow `## Email Voice` from workspace-config — tone, length, sign-off
+
+**Calendar awareness:** If the message involves scheduling (meeting request, "are you free", "when can we", availability question), fetch the user's calendar for the next 5 working days using the Google Calendar connector (if available). Include 2–3 suggested time slots in the draft reply. If calendar is not connected, note "Check your calendar for availability" in the draft.
+
+Format the card body as:
+
+```
+## 💬 Suggested reply
+
+[draft reply text, including availability slots if scheduling-related]
+
+---
+## 🧵 Context
+
+[1–3 sentence summary of what the message is asking and any relevant background]
+```
+
+Do not pre-fill a draft for Tier 2 or Soon cards — body left empty.
 
 ---
 
@@ -160,16 +215,16 @@ Use `notion-create-pages` with `data_source_id` from workspace-config. Propertie
 
 Format:
 
-> Triaged [N] messages across Slack, Jira, Gmail and Drive.
-> [X] Done cards cleared. [Y] items promoted to Today.
+> Triaged [N] messages across Slack, Jira, Gmail, Drive and GitHub.
+> [Y] items promoted to Today.
 >
 > **Tier 1 — Reply** ([count])
-> 1. Francisco in #team-channel asking about X — [Urgency]
-> 2. Jira: CPE-229 assigned to you — [Urgency]
-> 3. …
+> 1. `[1042]` Francisco in #team-channel asking about X — [Urgency]
+> 2. `[2317]` Jira: CPE-229 assigned to you — [Urgency]
+> 3. `[5891]` ↑ PR #412 upgraded from Tier 2 — waiting 2 days — [Urgency]
 >
 > **Tier 2 — Review** ([count])
-> - Bhagyashri shared the Hypothesis ticket update
+> - `[4403]` Bhagyashri shared the Hypothesis ticket update
 > - …
 >
 > **Tier 3 — Noise** ([count] skipped)
@@ -178,7 +233,10 @@ Format:
 > - 4 messages in #random
 > - 3 Confluence digest emails
 >
-> Say "draft reply to #2" to draft a response to any Tier 1 item.
+> Each Tier 1 card already contains a suggested reply — open the card in Notion to review it.
+> Say "send reply to #2" or "send reply to 1042" to send the draft (session number or Card ID both work).
+> Say "redraft #2 [shorter|more formal|add context]" to adjust tone.
+> Say "snooze #2 until [date]" to defer an item. Card IDs persist across sessions so you can snooze later.
 > Say "archive the noise" to archive the Tier 3 emails (requires explicit confirmation).
 > [Open your Triage Board]([BOARD_URL])
 
@@ -196,19 +254,33 @@ If the user says "archive the noise" or similar:
 
 ---
 
-### 8. Reply drafting
+### 8. Sending, redrafting and snoozing
 
-When asked to draft a reply (e.g. "draft reply to #3"), retrieve the full thread context and write a draft in the appropriate voice.
+**Card references:** All actions accept either a session number (`#2`) or a persistent 4-digit Card ID (`1042`). When a 4-digit ID is given, look up the card by filtering the board for `Card ID = 1042` — use the session number→ID map if still in the same session, or call `notion-fetch` with a filter if in a fresh session.
 
-**Slack replies** — use the Slack voice from SKILL.md:
-- Casual but clear, short (1–3 sentences), lead with the answer
-- Thread reply by default, not a channel post
-- Present the draft, wait for user confirmation before sending with `slack_send_message`
+**"send reply to #N" / "send reply to 1042"** — retrieve the draft from the Notion card body, show it in chat for final review, then send it:
+- Slack items: `slack_send_message` as a thread reply, then update the card Status to `Done` via `notion-update-page`
+- Email items: `create_draft` with subject "Re: [original subject]", then update the card Status to `Done`
 
-**Email replies** — use the Email Voice from `workspace-config.md`:
-- Read the `## Email Voice` section for the user's preferred style
-- Present the draft with subject line
-- Wait for user confirmation before sending with `create_draft`
+**"redraft #N"** or **"draft reply to #N"** — generate a fresh draft in chat:
+- Fetch the full thread again, write a new draft using the voice rules below
+- Show in chat, wait for confirmation, then send or update the Notion card body via `notion-update-page`
+
+**"redraft #N [modifier]"** — regenerate with a specific tone adjustment. Supported modifiers:
+- `shorter` — cut to 1–2 sentences, remove any preamble
+- `more formal` — professional register, no contractions, full sign-off
+- `more casual` — conversational, first name, drop formality
+- `add context` — expand with relevant background before the answer
+- `add availability` — fetch calendar and append free slot suggestions
+
+Apply the modifier and show the revised draft. Wait for confirmation before sending.
+
+**"snooze #N until [date/day]"** / **"snooze 1042 until [date/day]"** — defer the item without losing it:
+- Parse the date (e.g. "Monday", "next week", "June 10")
+- Look up the card by session number or 4-digit Card ID
+- Update the card: set Status = `Backlog`, set `date:Due date:start` = the parsed ISO date
+- The item will auto-promote to Today when that date arrives (step 2)
+- Confirm: "Snoozed — #N will resurface on [date]."
 
 ---
 
@@ -217,11 +289,12 @@ When asked to draft a reply (e.g. "draft reply to #3"), retrieve the full thread
 After completing the run, estimate token consumption based on content volume.
 
 Track these counts during the run:
-- `slack_chars`: total characters in all Slack messages read (DMs, @mentions, Jira channel)
+- `slack_chars`: total characters in all Slack messages read
 - `jira_chars`: total characters in all Jira notification messages parsed
 - `email_snippet_chars`: characters in email snippets classified without `get_thread`
 - `email_full_chars`: characters in full email threads fetched via `get_thread`
 - `drive_chars`: total characters in all Google Doc content read
+- `github_chars`: total characters in GitHub PR data fetched
 - `board_chars`: total characters in all board API responses
 - `skill_overhead`: fixed ~4,000 tokens
 
@@ -234,6 +307,7 @@ Print at the end of every triage summary:
    Gmail snippets: ~[email_snippet_chars ÷ 4] tokens  ([N] threads)
    Gmail full:     ~[email_full_chars ÷ 4] tokens  ([N] threads read in full)
    Drive:          ~[drive_chars ÷ 4] tokens  ([N] docs)
+   GitHub:         ~[github_chars ÷ 4] tokens  ([N] PRs)
    Board + API:    ~[board_chars ÷ 4] tokens
    Skill overhead: ~4,000 tokens
    ─────────────────────────────────
@@ -241,4 +315,4 @@ Print at the end of every triage summary:
    Output:         ~[count of cards created × 200 + response length ÷ 4] tokens
 ```
 
-Note: these are estimates (÷4 heuristic). Actual usage visible in your Anthropic console under Usage. Typical light run: 5–10k tokens. Heavy run with multiple Drive docs: 20–40k tokens.
+Note: these are estimates (÷4 heuristic). Actual usage visible in your Anthropic console under Usage.

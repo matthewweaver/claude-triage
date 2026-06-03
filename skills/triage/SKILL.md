@@ -122,3 +122,17 @@ When asked to draft a reply to an email item, read the full thread via `get_thre
 - Write the reply following those guidelines
 - Include a subject line (use "Re: [original subject]")
 - Present the draft and wait for the user to confirm before sending via `create_draft`
+
+### Tone variants
+
+When asked to redraft with a modifier (e.g. "redraft #2 shorter"), apply the following adjustments to the base draft:
+
+| Modifier | What to do |
+|---|---|
+| `shorter` | Cut to 1–2 sentences. Remove preamble, pleasantries, and any context that isn't essential. |
+| `more formal` | Professional register. No contractions. Full sign-off (e.g. "Kind regards"). Structured sentences. |
+| `more casual` | Conversational tone. First name. Contractions fine. Match the energy of the original message. |
+| `add context` | Keep the answer, then add 1–2 sentences of relevant background or reasoning before or after. |
+| `add availability` | Fetch the user's Google Calendar for the next 5 working days. Identify 2–3 free slots of 30–60 minutes. Append them to the reply in a clean format (e.g. "I'm free: Mon 2pm–3pm, Tue 10am–11am, Wed 3pm–4pm"). |
+
+After applying the modifier, present the revised draft. Wait for confirmation before sending. The user can chain modifiers (e.g. "shorter and more formal") — apply all that apply.
