@@ -118,6 +118,23 @@ For each PR:
 
 If GitHub is not configured: skip silently.
 
+**F. Scheduled reminders**
+
+Read `skills/triage/references/reminders.md`. For each row in the **Active Reminders** table:
+
+1. Parse the `Schedule` field (day + BST time).
+2. Determine whether that day + time slot falls within the current triage window (last triaged → now). Use today's date and the current BST time to evaluate day-of-week and hour. For `biweekly`, check whether the current ISO week number is even. For `monthly-first-monday`, check whether today is the first Monday of the month.
+3. If the slot is due **and** the permalink `reminder://[ID]/[YYYY-MM-DD]` (where the date is today's date) is **not** in the exclusion set:
+   - Classify as **Tier 1 — Reply**, Urgency = **Medium**
+   - Name: the reminder `Title`
+   - Channel: `Reminder`
+   - Source: `@mention`
+   - Link: `reminder://[ID]/[YYYY-MM-DD]`
+   - Card body: the `Notes` value (if any), prefixed with `⏰ Scheduled reminder.`
+   - Set `date:Triaged at:start` = today
+
+This fires once per scheduled occurrence. If a card already exists with that permalink (in the exclusion set), skip silently.
+
 ---
 
 ### 5. Classify each message

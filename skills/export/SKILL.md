@@ -14,6 +14,7 @@ safe to commit or share publicly.
 ## What gets excluded
 
 - `skills/triage/references/workspace-config.md` — personal config, stays local
+- `skills/triage/references/reminders.md` — personal reminders, stays local
 - `*.DS_Store`, `__MACOSX` — OS noise
 - Any existing `*.plugin` files at the plugin root (regenerated fresh)
 
@@ -41,6 +42,7 @@ zip -r "/tmp/NAME.plugin" \
   .gitignore \
   README.md \
   --exclude "*/workspace-config.md" \
+  --exclude "*/reminders.md" \
   --exclude "*/.DS_Store" \
   --exclude "*.DS_Store"
 ```
