@@ -4,4 +4,5 @@ skills/triage/references/workspace-config.md
 # Personal reminders — edit locally, not committed to git
 skills/triage/references/reminders.md
 
-*/.DS_Store
+**/.DS_Store
+.DS_Store

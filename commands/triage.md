@@ -16,6 +16,11 @@ Read `skills/triage/references/workspace-config.md`. Identify the **board backen
 
 If workspace-config.md is missing or empty: "Run `/triage setup` first to configure your workspace."
 
+**Triage window — precise timestamp:**
+Read `skills/triage/references/last-run-timestamp.md`. It contains a single ISO 8601 timestamp (e.g. `2026-06-17T05:49:00Z`) representing when the last triage run started. Use this as the triage window start for all source fetches this run. If the file is missing or empty, default to 24 hours ago.
+
+Record the current UTC time now (before fetching anything) and write it to `skills/triage/references/last-run-timestamp.md` at the **end** of the run (step 7), so the next run uses an accurate start time.
+
 **Plugin update check:** Read the `version` field from `.claude-plugin/plugin.json`. Fetch `https://raw.githubusercontent.com/captify-mweaver/claude-triage/main/.claude-plugin/plugin.json` and compare. If the remote version is newer, append a note at the end of the triage report: "⬆️ Plugin update available (vX.Y.Z → vA.B.C) — run `/export` after pulling the latest from git."
 
 ---
@@ -24,9 +29,15 @@ If workspace-config.md is missing or empty: "Run `/triage setup` first to config
 
 **Monday.com:** Call `get_board_items_page` on the configured Board ID with `includeColumns: true`, fetching `COL_TRIAGED_AT`, `COL_DUE`, and `COL_LINK`. Collect all existing link URLs as an exclusion set. Also collect the page ID and current Status of every existing Tier 1 and Tier 2 card for thread-awareness in step 6.
 
-**Notion:** Call `notion-search` with `data_source_url` set to the configured **Database collection ID** (e.g. `collection://...`) and a broad query (use `"*"` or a common word like `"the"`), with `page_size: 25`. Paginate if needed (repeat until fewer than 25 results returned) to retrieve **all** pages. Do NOT use `notion-fetch` on the database ID — that returns only schema, not rows. For each page, extract the `Link` property URL into the exclusion set, and find the most recent `Triaged at` date. Also store each page's ID, Name, Status, Link, and `Card ID` for thread-awareness in step 6. Collect all existing Card ID values into a set so new IDs can be checked for uniqueness.
+**Notion:** `notion-search` is a **semantic** search — a single query does not return all rows. To maximise coverage, run **four queries in parallel** against the collection, each with `page_size: 25`:
+- `"the"`
+- `"jira"`
+- `"reminder"`
+- `"gmail"`
 
-- **Time window**: most recent "Triaged at" date on any card → use as the Slack/Gmail fetch start. Default to last 24 hours if board is empty.
+Deduplicate results by page ID. Do NOT use `notion-fetch` on the database ID — that returns only schema, not rows. For each unique page, extract the `Link` property URL into the exclusion set. Also store each page's ID, Name, Status, Link, and `Card ID` for thread-awareness in step 6. Collect all existing Card ID values into a set so new IDs can be checked for uniqueness.
+
+> ⚠️ Even with multiple queries the board scan may not be exhaustive. Step 6 has a mandatory pre-creation check to catch anything still missed.
 
 If board not found: "Triage Board not found — run `/triage setup` first."
 
@@ -150,7 +161,14 @@ Assign an **Urgency** for all Tier 1 and Tier 2 items: Critical 🔥 / High / Me
 
 ### 6. Create or update board cards (Tier 1 and Tier 2 only)
 
-**Thread awareness — check before creating:** Before creating a new card, check whether an existing card on the board already has the same Link URL (from the data loaded in step 1). If a match is found:
+**Thread awareness — check before creating:** Before creating a new card:
+
+1. **Check the in-memory exclusion set** (built in step 1) for the Link URL.
+2. **If not found there**: call `notion-search` with the Link URL as the query and `data_source_url` set to the collection ID. If any result has the same Link property value, treat it as a match.
+
+Both checks must pass (no match in either) before creating a card.
+
+If a match is found:
 - Do not create a duplicate card
 - If the existing card's Status is `Tier 2 — Review` and the new classification is `Tier 1 — Reply`, **upgrade** it: update the Status and Urgency via `notion-update-page` / `change_item_column_values`, and add the new draft reply to the card body
 - If the existing card's Status is already `Tier 1 — Reply`, skip (card already exists, may have been updated)
@@ -258,6 +276,8 @@ Format:
 > [Open your Triage Board]([BOARD_URL])
 
 If nothing actionable: "All clear — no new actionable messages."
+
+**After generating the report**, write the timestamp recorded at the start of this run (step 0) to `skills/triage/references/last-run-timestamp.md` as a single ISO 8601 UTC string (e.g. `2026-06-17T09:05:00Z`). This ensures the next run's triage window starts from the correct point.
 
 ---
 

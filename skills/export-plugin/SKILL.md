@@ -1,12 +1,12 @@
 ---
-name: export
+name: export-plugin
 description: >
   Re-package this plugin as a shareable .plugin file, safe for git and public sharing.
   Excludes personal workspace-config.md. Use when: export plugin, package plugin,
   build plugin, share plugin, publish plugin, update plugin file, push to git, commit plugin.
 ---
 
-# /export
+# /export-plugin
 
 Re-packages this plugin into a distributable `.plugin` file — personal config excluded,
 safe to commit or share publicly.
@@ -24,7 +24,7 @@ These exclusions match `.gitignore` so the git folder and the `.plugin` file sta
 
 ### 1 — Find the plugin root
 
-This SKILL.md lives at `skills/export/SKILL.md` inside the plugin. The plugin root is
+This SKILL.md lives at `skills/export-plugin/SKILL.md` inside the plugin. The plugin root is
 two directories up from this file. Read `.claude-plugin/plugin.json` from that root to
 get the plugin `name` field.
 
@@ -61,31 +61,24 @@ and tell the user: "Saved to Downloads — copy `NAME.plugin` into your git clon
 
 ### 4 — Sync the scheduled task
 
-Check whether a scheduled task named `triage` exists at `~/Documents/Claude/Scheduled/triage/SKILL.md`.
+Use `mcp__scheduled-tasks__list_scheduled_tasks` to check whether a task with `taskId = "triage"` exists.
 
-If it exists, overwrite it with a condensed version of `commands/triage.md` — same content as the command but with the personal workspace config baked in from `skills/triage/references/workspace-config.md` (identity, board IDs, channel rules, key people, Jira filters, email voice). This keeps the scheduled task in sync with the plugin without requiring a manual copy.
+If it exists:
+1. Read `commands/triage.md` (the steps), `skills/triage/references/workspace-config.md` (identity + board config), and `skills/triage/references/reminders.md` (reminders table) from the plugin root.
+2. Build a new prompt by combining them:
+   - Preamble: "You are acting as a Chief of Staff for Matt Weaver (Engineering Manager)…"
+   - Inline all identity, board, channel, key people, Jira, Gmail, Drive, email voice fields from workspace-config.md
+   - Inline the full Active Reminders tables from reminders.md (with the schedule logic explanation)
+   - Steps 1–9 from commands/triage.md, with Monday.com branches removed (backend is Notion)
+3. Call `mcp__scheduled-tasks__update_scheduled_task` with `taskId = "triage"` and the compiled `prompt`.
 
-Use this structure for the scheduled task SKILL.md:
-```
----
-name: triage
-description: [from commands/triage.md frontmatter]
----
+This keeps the scheduled job in sync with every export — no plugin reimport required.
 
-[Identity, board config, channel rules, key people, Jira filters, Gmail/Drive settings, email voice — all inlined from workspace-config.md]
-
----
-
-## Steps
-
-[Steps 1–9 from commands/triage.md, with Monday.com branches removed since backend is Notion]
-```
-
-If the scheduled task path does not exist, skip silently — user may not have set one up.
+If the `triage` task does not exist in the scheduler, skip silently and note: "No scheduled triage task found — skipped sync."
 
 ### 5 — Report
 
 List the files packaged and those excluded. Confirm both output paths. If the scheduled task was synced, note: "✅ Scheduled task SKILL.md updated." Then say:
 
 > "Commit `NAME.plugin` alongside the source files — anyone cloning the repo can open it
-> to import the plugin. Run `/export` again any time you make changes."
+> to import the plugin. Run `/export-plugin` again any time you make changes."
