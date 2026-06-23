@@ -9,7 +9,7 @@ Each `/triage` run:
 - Scans your Gmail inbox and extracts actions from Google Meet recordings
 - Pulls action items from meeting notes and transcripts in Google Drive
 - Classifies everything into **Tier 1 (Reply)**, **Tier 2 (Review)**, or **Tier 3 (Noise)**
-- Creates cards on your Monday.com board for anything actionable
+- Creates cards on your Notion board for anything actionable
 - Summarises noise inline so you can see it without it cluttering your board
 
 Tier 1 items are numbered so you can say "draft reply to #2" and Claude will write it.
@@ -18,7 +18,7 @@ Tier 1 items are numbered so you can say "draft reply to #2" and Claude will wri
 
 You'll need the Claude desktop app (Cowork mode) with these connectors enabled under **Customize → Connectors**:
 
-- Monday.com
+- Notion
 - Slack
 - Gmail
 - Google Drive
@@ -29,7 +29,7 @@ You don't need all four — setup will ask which ones you want to use.
 
 1. Clone this repo:
    ```bash
-   git clone https://github.com/captify-mweaver/claude-triage.git
+   git clone https://github.com/matthewweaver/claude-triage.git
    ```
 
 2. Open `triage.plugin` — the Cowork app will detect it and show an install prompt. Click **Install**.
@@ -38,7 +38,7 @@ You don't need all four — setup will ask which ones you want to use.
    ```
    /setup
    ```
-   This walks you through connecting each service, sets up your Monday.com board (or connects an existing one), and saves your personal config. Takes about 5 minutes.
+   This walks you through connecting each service, sets up your Notion board, and saves your personal config. Takes about 5 minutes.
 
 4. Run your first triage:
    ```

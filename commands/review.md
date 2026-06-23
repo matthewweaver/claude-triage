@@ -23,7 +23,7 @@ Use `notion-search` with `data_source_url` set to the configured **Database coll
 Group results by Status. Build:
 - **Stale Tier 1 list**: Tier 1 — Reply cards with `Triaged at` date more than 3 days ago (overdue — no reply sent)
 - **Stale Tier 2 list**: Tier 2 — Review cards with `Triaged at` date more than 5 days ago
-- **Soon list**: Soon cards, sorted by Due date ascending
+- **This Week list**: This Week cards, sorted by Due date ascending
 - **Done this week**: Done cards triaged or updated in the last 7 days
 
 ---
@@ -69,7 +69,7 @@ For each **Jira gap** (assigned ticket with no board card):
 
 ```
 AskUserQuestion: "[Ticket ID] [Title] — no board card exists. Add one?"
-Options: Add as Tier 1 / Add as Tier 2 / Add as Soon / Skip
+Options: Add as Tier 1 / Add as Tier 2 / Add as This Week / Skip
 ```
 
 If adding a card, create it via `notion-create-pages` using the Jira ticket URL as the Link and today's date as Triaged at.

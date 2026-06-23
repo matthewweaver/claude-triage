@@ -24,58 +24,6 @@ Then proceed section by section.
 
 ## Section 1 — Board Backend
 
-Ask:
-
-```
-AskUserQuestion: "Which Kanban board would you like to use for triage?"
-Options: Monday.com / Notion
-```
-
-### If Monday.com
-
-Ask:
-
-```
-AskUserQuestion: "Do you have an existing Triage Board on Monday.com, or should I create one?"
-Options: Create a new board for me / I have an existing board
-```
-
-**If creating a new board:**
-
-Call `create_board` with name "Triage Board". Then create the required groups and columns:
-
-Groups to create (in order):
-1. "P0 — Fire 🔥"
-2. "Today"
-3. "Tier 1 — Reply"
-4. "Tier 2 — Review"
-5. "Soon"
-6. "Backlog"
-7. "Done"
-
-Columns to create on the board:
-- Status column titled "Status" with labels: `Tier 1 — Reply`, `Tier 2 — Review`, `Today`, `Soon`, `Done`
-- Status column titled "Urgency" with labels: `Critical 🔥`, `High`, `Medium`, `Low`
-- Status column titled "Source" with labels: `DM`, `@mention`, `Thread reply`
-- Text column titled "Channel"
-- Link column titled "Link"
-- Date column titled "Triaged at"
-- Date column titled "Due date"
-
-After creation, call `get_board_info` on the new board to capture all group IDs and column IDs. Save the board ID and URL. Confirm: "✅ Triage Board created."
-
-**If existing board:**
-
-Ask: "What's your board ID or URL?" Extract the board ID. Call `get_board_info` to capture all group IDs and column IDs. Confirm: "✅ Triage Board connected."
-
-If Monday.com isn't connected: "Monday.com isn't connected yet. Go to Customize → Connectors, connect Monday.com, then run `/triage setup` again."
-
-Save to workspace-config.md:
-- `board_backend: monday`
-- All board/group/column IDs
-
-### If Notion
-
 Check if the Notion connector is available (try `notion-search` with a simple query).
 
 - **If not connected**: "Notion isn't connected yet. Go to Customize → Connectors, connect Notion, then run `/triage setup` again."
@@ -303,36 +251,10 @@ Using all the answers collected, write a fully populated `skills/triage/referenc
 - **Slack user ID**: [discovered user ID]
 
 ## Board Backend
-- **Backend**: [monday | notion]
+- **Backend**: notion
 - **Board ID**: [board ID]
 - **Board URL**: [board URL]
-[If notion, also include:]
 - **Database collection ID**: [data_source_id from notion-fetch]
-
-## Monday.com Board
-[Include this section only if backend = monday]
-
-### Group IDs
-| Group | ID |
-|---|---|
-| P0 — Fire 🔥 | [id] |
-| Today | [id] |
-| Tier 1 — Reply | [id] |
-| Tier 2 — Review | [id] |
-| Soon | [id] |
-| Backlog | [id] |
-| Done | [id] |
-
-### Column IDs
-| Column | ID |
-|---|---|
-| Status | [id] |
-| Urgency | [id] |
-| Source | [id] |
-| Channel | [id] |
-| Link | [id] |
-| Triaged at | [id] |
-| Due date | [id] |
 
 ## Priority Channels
 [table of channels and notes from user's answers]

@@ -15,6 +15,7 @@ safe to commit or share publicly.
 
 - `skills/triage/references/workspace-config.md` — personal config, stays local
 - `skills/triage/references/reminders.md` — personal reminders, stays local
+- `skills/triage/references/exclusion-set.md` — machine-generated per install, stays local
 - `*.DS_Store`, `__MACOSX` — OS noise
 - Any existing `*.plugin` files at the plugin root (regenerated fresh)
 
@@ -43,6 +44,7 @@ zip -r "/tmp/NAME.plugin" \
   README.md \
   --exclude "*/workspace-config.md" \
   --exclude "*/reminders.md" \
+  --exclude "*/exclusion-set.md" \
   --exclude "*/.DS_Store" \
   --exclude "*.DS_Store"
 ```
@@ -69,7 +71,7 @@ If it exists:
    - Preamble: "You are acting as a Chief of Staff for Matt Weaver (Engineering Manager)…"
    - Inline all identity, board, channel, key people, Jira, Gmail, Drive, email voice fields from workspace-config.md
    - Inline the full Active Reminders tables from reminders.md (with the schedule logic explanation)
-   - Steps 1–9 from commands/triage.md, with Monday.com branches removed (backend is Notion)
+   - Steps 1–9 from commands/triage.md
 3. Call `mcp__scheduled-tasks__update_scheduled_task` with `taskId = "triage"` and the compiled `prompt`.
 
 This keeps the scheduled job in sync with every export — no plugin reimport required.

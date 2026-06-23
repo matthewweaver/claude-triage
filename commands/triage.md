@@ -1,5 +1,5 @@
 ---
-description: Read your Slack, Jira, Gmail, Google Drive and GitHub, classify everything into tiers, and update your board (Monday.com or Notion). Tier 1 items are numbered so you can say "draft reply to #2".
+description: Read your Slack, Jira, Gmail, Google Drive and GitHub, classify everything into tiers, and update your Notion board. Tier 1 items are numbered so you can say "draft reply to #2".
 ---
 
 # /triage
@@ -21,49 +21,51 @@ Read `skills/triage/references/last-run-timestamp.md`. It contains a single ISO 
 
 Record the current UTC time now (before fetching anything) and write it to `skills/triage/references/last-run-timestamp.md` at the **end** of the run (step 7), so the next run uses an accurate start time.
 
+**Exclusion set:** Read `skills/triage/references/exclusion-set.md` if it exists. This file contains one link URL per line — every Slack message, Jira ticket, email, Drive doc, or GitHub PR that has already been triaged into a board card. Load these into an in-memory set at startup. This is the primary deduplication mechanism for all message types. Do NOT add reminder links to this file — reminders use a live board check instead (see Step 4F), so a deleted reminder card will correctly re-fire on the next run.
+
 **Plugin update check:** Read the `version` field from `.claude-plugin/plugin.json`. Fetch `https://raw.githubusercontent.com/captify-mweaver/claude-triage/main/.claude-plugin/plugin.json` and compare. If the remote version is newer, append a note at the end of the triage report: "⬆️ Plugin update available (vX.Y.Z → vA.B.C) — run `/export` after pulling the latest from git."
 
 ---
 
-### 1. Load the board
+### 1. Verify board config
 
-**Monday.com:** Call `get_board_items_page` on the configured Board ID with `includeColumns: true`, fetching `COL_TRIAGED_AT`, `COL_DUE`, and `COL_LINK`. Collect all existing link URLs as an exclusion set. Also collect the page ID and current Status of every existing Tier 1 and Tier 2 card for thread-awareness in step 6.
+Confirm the board backend and Board ID / Collection ID are present in workspace-config.md. If missing: "Triage Board not found — run `/triage setup` first."
 
-**Notion:** `notion-search` is a **semantic** search — a single query does not return all rows. To maximise coverage, run **four queries in parallel** against the collection, each with `page_size: 25`:
-- `"the"`
-- `"jira"`
-- `"reminder"`
-- `"gmail"`
-
-Deduplicate results by page ID. Do NOT use `notion-fetch` on the database ID — that returns only schema, not rows. For each unique page, extract the `Link` property URL into the exclusion set. Also store each page's ID, Name, Status, Link, and `Card ID` for thread-awareness in step 6. Collect all existing Card ID values into a set so new IDs can be checked for uniqueness.
-
-> ⚠️ Even with multiple queries the board scan may not be exhaustive. Step 6 has a mandatory pre-creation check to catch anything still missed.
-
-If board not found: "Triage Board not found — run `/triage setup` first."
+No board pre-load is needed. Deduplication is handled by `exclusion-set.md` (step 0). Targeted board queries happen in steps 2 and 3.
 
 ---
 
 ### 2. Promote due items to Today
 
-Find items in **Soon** or **Backlog** with a "Due date" on or before today.
+Query for overdue items:
 
-**Monday.com:** For each, `move_item_to_group` → `GROUP_TODAY` and set `COL_STATUS` to `{"label": "Today"}`.
+```sql
+SELECT id, Name FROM "collection://261f9847-2f3c-4166-a939-e001bb013b0a"
+WHERE Status IN ('Backlog', 'This Week')
+AND "date:Due date:start" <= DATE('now')
+```
 
-**Notion:** For each matching page (Status = `Soon` or `Backlog`, Due date ≤ today), call `notion-update-page` setting Status = `Today`.
+For each result, call `notion-update-page` setting Status = `Today`.
 
 ---
 
-### 3. Build exclusion set from Done items
+### 3. Build exclusion set from Done items (safety net)
 
-**Monday.com:** Find all items where Status = "Done" or in group `GROUP_DONE`. Collect their link URLs into the exclusion set (do not delete them).
+This catches any manually-created Done cards whose links were never written to `exclusion-set.md`.
 
-**Notion:** Find all pages where Status = `Done`. Collect their link URLs into the exclusion set (do not archive them).
+
+```sql
+SELECT Link FROM "collection://261f9847-2f3c-4166-a939-e001bb013b0a"
+WHERE Status = 'Done' AND Link IS NOT NULL
+```
+
+Merge results into the in-memory exclusion set for this run only (do not write to file — `exclusion-set.md` is append-only at the end of the run in step 7).
 
 ---
 
 ### 4. Fetch all sources
 
-Run all five fetches in parallel using the time window from step 1.
+Run all five fetches in parallel using the triage window from step 0.
 
 **A. Slack — Human DMs and @mentions**
 
@@ -100,7 +102,7 @@ Use tier/urgency rules from `workspace-config.md` Jira filters. Set **Channel** 
 - Auto-Tier 1: time-sensitive language ("urgent", "by EOD", "ASAP"), invoices, fraud/security alerts, replies in threads you started
 - For ambiguous Tier 1 and Tier 2 candidates only: call `get_thread` to read the full body and confirm classification
 
-For **meeting recording emails**: `get_thread` → extract action items → create Soon cards (see step 6 logic). Scan each action item for due date mentions and set `date:Due date:start` if found; leave blank otherwise.
+For **meeting recording emails**: `get_thread` → extract action items → create This Week cards (see step 6 logic). Scan each action item for due date mentions and set `date:Due date:start` if found; leave blank otherwise.
 
 Skip newsletters, marketing, bulk emails.
 
@@ -110,7 +112,7 @@ Skip newsletters, marketing, bulk emails.
 - Title contains "Transcript" + a date
 - Title starts with "Notes –"
 
-Skip any whose view URL is in the exclusion set. For each, `download_file_content` with `exportMimeType: text/plain` → decode content → extract action items assigned to you or unowned → create one **Soon** card per action.
+Skip any whose view URL is in the exclusion set. For each, `download_file_content` with `exportMimeType: text/plain` → decode content → extract action items assigned to you or unowned → create one **This Week** card per action.
 
 When extracting action items, always scan for due date mentions (e.g. "by Friday", "before June 4", "EOD Thursday", "next week"). Convert any relative dates to an absolute ISO date using today's date. Set this as the `date:Due date:start` on the card. If no due date is mentioned, leave the Due date blank.
 
@@ -135,16 +137,25 @@ Read `skills/triage/references/reminders.md`. For each row in the **Active Remin
 
 1. Parse the `Schedule` field (day + BST time).
 2. Determine whether that day + time slot falls within the current triage window (last triaged → now). Use today's date and the current BST time to evaluate day-of-week and hour. For `biweekly`, check whether the current ISO week number is even. For `monthly-first-monday`, check whether today is the first Monday of the month.
-3. If the slot is due **and** the permalink `reminder://[ID]/[YYYY-MM-DD]` (where the date is today's date) is **not** in the exclusion set:
+3. If the slot is due, do a **live board check** before creating using an exact SQL lookup:
+
+   ```sql
+   SELECT Name, Status FROM "collection://261f9847-2f3c-4166-a939-e001bb013b0a"
+   WHERE Link = 'reminder://[ID]'
+   ```
+
+   If any row is returned, that reminder card is still active on the board — skip it silently.
+
+   If no match is found, create the card:
    - Classify as **Tier 1 — Reply**, Urgency = **Medium**
    - Name: the reminder `Title`
    - Channel: `Reminder`
    - Source: `@mention`
-   - Link: `reminder://[ID]/[YYYY-MM-DD]`
+   - Link: `reminder://[ID]` (no date — a stable identifier so the live check works across days)
    - Card body: the `Notes` value (if any), prefixed with `⏰ Scheduled reminder.`
    - Set `date:Triaged at:start` = today
 
-This fires once per scheduled occurrence. If a card already exists with that permalink (in the exclusion set), skip silently.
+**Do NOT add reminder links to `exclusion-set.md`.** The live board check is intentional: if you delete the card, the next run will see nothing on the board and correctly create a fresh one.
 
 ---
 
@@ -161,51 +172,20 @@ Assign an **Urgency** for all Tier 1 and Tier 2 items: Critical 🔥 / High / Me
 
 ### 6. Create or update board cards (Tier 1 and Tier 2 only)
 
-**Thread awareness — check before creating:** Before creating a new card:
+**Deduplication — check before creating:**
 
-1. **Check the in-memory exclusion set** (built in step 1) for the Link URL.
-2. **If not found there**: call `notion-search` with the Link URL as the query and `data_source_url` set to the collection ID. If any result has the same Link property value, treat it as a match.
+**For message/ticket/doc cards** (Slack, Jira, Gmail, Drive, GitHub): check `exclusion-set.md` (loaded in step 0) for the Link URL. If present, skip — this item has already been triaged. Do not re-raise it even if the board card was later deleted.
 
-Both checks must pass (no match in either) before creating a card.
-
-If a match is found:
-- Do not create a duplicate card
-- If the existing card's Status is `Tier 2 — Review` and the new classification is `Tier 1 — Reply`, **upgrade** it: update the Status and Urgency via `notion-update-page` / `change_item_column_values`, and add the new draft reply to the card body
-- If the existing card's Status is already `Tier 1 — Reply`, skip (card already exists, may have been updated)
-- Note the updated card in the report as "↑ upgraded" rather than "new"
-
-#### Monday.com
-
-**Tier 1** → group `GROUP_TIER1`
-**Tier 2** → group `GROUP_TIER2`
-**P0 / Critical production incident** → group `GROUP_P0`
-
-| Field | Column | Value |
-|---|---|---|
-| Name | — | Concise one-line summary (not copy-pasted) |
-| Status | `COL_STATUS` | `{"label": "Tier 1 — Reply"}` or `{"label": "Tier 2 — Review"}` |
-| Urgency | `COL_URGENCY` | `{"label": "Critical 🔥"}` / `{"label": "High"}` / `{"label": "Medium"}` / `{"label": "Low"}` |
-| Source | `COL_SOURCE` | `DM` / `@mention` / `Thread reply` |
-| Channel | `COL_CHANNEL` | Channel or sender name |
-| Link | `COL_LINK` | `{"url": "...", "text": "..."}` |
-| Triaged at | `COL_TRIAGED_AT` | `{"date": "YYYY-MM-DD"}` |
-
-**Soon cards** (from Drive/Gmail actions):
-- Group: `GROUP_SOON`
-- Status: `{"label": "Soon"}`
-- Urgency: `{"label": "Medium"}`
-- Due date: from text only (leave blank if none stated)
-
-#### Notion
+**For reminder cards**: use the live SQL check from step 4F only. Do not check `exclusion-set.md`.
 
 Use `notion-create-pages` with `data_source_id` from workspace-config. Properties:
 
-**Assign a Card ID** for each new card: generate a random 4-digit number (1000–9999). Check it against the set of existing Card IDs collected in step 1. If it collides, generate another until unique. Store the session number → Card ID mapping for the report.
+**Assign a Card ID** for each new card: generate a random 4-digit number (1000–9999). Store the session number → Card ID mapping for the report.
 
 | Field | Notion property | Value |
 |---|---|---|
 | Name | title | Concise one-line summary |
-| Status | select | `Tier 1 — Reply` / `Tier 2 — Review` / `Today` / `On Hold` / `Backlog` |
+| Status | select | `Tier 1 — Reply` / `Tier 2 — Review` / `Today` / `On Hold` / `Backlog` / `This Week` |
 | Group | select | `Tier 1 — Reply` / `Tier 2 — Review` / `P0 — Fire 🔥` / `Today` / `On Hold` / `Backlog` |
 | Urgency | select | `Critical 🔥` / `High` / `Medium` / `Low` |
 | Source | select | `DM` / `@mention` / `Thread reply` |
@@ -213,7 +193,7 @@ Use `notion-create-pages` with `data_source_id` from workspace-config. Propertie
 | Link | url | Permalink URL |
 | Card ID | rich_text | The 4-digit ID assigned above (e.g. `1042`) |
 | Triaged at | date | `date:Triaged at:start` = today's date (ISO 8601) |
-| Due date | date | `date:Due date:start` = from text only (Soon cards only) |
+| Due date | date | `date:Due date:start` = from text only (This Week cards only) |
 
 **P0 / Critical**: set Group = `P0 — Fire 🔥`, Status = `P0 — Fire 🔥`.
 
@@ -240,7 +220,7 @@ Format the card body as:
 [1–3 sentence summary of what the message is asking and any relevant background]
 ```
 
-Do not pre-fill a draft for Tier 2 or Soon cards — body left empty.
+Do not pre-fill a draft for Tier 2 or This Week cards — body left empty.
 
 ---
 
@@ -279,6 +259,8 @@ If nothing actionable: "All clear — no new actionable messages."
 
 **After generating the report**, write the timestamp recorded at the start of this run (step 0) to `skills/triage/references/last-run-timestamp.md` as a single ISO 8601 UTC string (e.g. `2026-06-17T09:05:00Z`). This ensures the next run's triage window starts from the correct point.
 
+**Append to exclusion-set.md:** For every message/ticket/doc card created this run (Slack, Jira, Gmail, Drive, GitHub — not reminders), append the Link URL to `skills/triage/references/exclusion-set.md`, one URL per line. Create the file if it doesn't exist. This prevents the same item ever resurfacing in a future triage run, even if the board card is deleted.
+
 ---
 
 ### 7a. Archive offer (only if triggered by user)
@@ -296,7 +278,7 @@ If the user says "archive the noise" or similar:
 **Card references:** All actions accept either a session number (`#2`) or a persistent 4-digit Card ID (`1042`). When a 4-digit ID is given, look up the card by filtering the board for `Card ID = 1042` — use the session number→ID map if still in the same session, or call `notion-fetch` with a filter if in a fresh session.
 
 **"send reply to #N" / "send reply to 1042"** — retrieve the draft from the Notion card body, show it in chat for final review, then send it:
-- Slack items: `slack_send_message` as a thread reply, then update the card Status to `Done` via `notion-update-page`
+- Slack items: `slack_send_message` as a thread reply, then set card Status to `Done` via `notion-update-page`
 - Email items: `create_draft` with subject "Re: [original subject]", then update the card Status to `Done`
 
 **"redraft #N"** or **"draft reply to #N"** — generate a fresh draft in chat:

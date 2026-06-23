@@ -8,37 +8,12 @@
 - **Slack user ID**: [e.g. U0123456789 — setup finds this automatically]
 
 ## Board Backend
-- **Backend**: [monday | notion]
-- **Board ID**: [e.g. 1234567890 for Monday.com, or Notion database ID]
-- **Board URL**: [e.g. https://your-team.monday.com/boards/1234567890 or https://www.notion.so/...]
-- **Database collection ID**: [Notion only — data_source_id from notion-fetch, e.g. collection://xxxxxxxx-...]
+- **Backend**: notion
+- **Board ID**: [Notion database ID]
+- **Board URL**: [e.g. https://www.notion.so/...]
+- **Database collection ID**: [data_source_id from notion-fetch, e.g. collection://xxxxxxxx-...]
 
-> **Card IDs**: Each triage card is assigned a persistent 4-digit ID (e.g. `1042`) stored as the `Card ID` property in Notion. Reference cards by ID across sessions: "snooze 1042 until Monday", "send reply to 1042".
-
-## Monday.com Board
-[Include this section only if Backend = monday]
-
-### Group IDs
-| Group | ID |
-|---|---|
-| P0 — Fire 🔥 | [id] |
-| Today | [id] |
-| Tier 1 — Reply | [id] |
-| Tier 2 — Review | [id] |
-| Soon | [id] |
-| Backlog | [id] |
-| Done | [id] |
-
-### Column IDs
-| Column | ID |
-|---|---|
-| Status | [id] |
-| Urgency | [id] |
-| Source | [id] |
-| Channel | [id] |
-| Link | [id] |
-| Triaged at | [id] |
-| Due date | [id] |
+> **Card IDs**: Each triage card is assigned a persistent 4-digit ID (e.g. `1042`) stored as the `Card ID` property. Reference cards by ID across sessions: "snooze 1042 until Monday", "send reply to 1042".
 
 ## Priority Channels
 Messages here likely need attention. Default Tier 1 if @mentioned, Tier 2 for general activity.

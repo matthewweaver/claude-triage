@@ -41,7 +41,7 @@ Use `notion-search` with `data_source_url` set to the configured **Database coll
 Collect:
 - **Done today**: Done cards with `Triaged at` date = today
 - **Active Tier 1**: current Tier 1 — Reply cards (awaiting reply)
-- **Upcoming**: Soon cards with Due date in the next 7 days, sorted by date
+- **Upcoming**: This Week cards with Due date in the next 7 days, sorted by date
 
 ---
 

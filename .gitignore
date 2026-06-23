@@ -4,5 +4,11 @@ skills/triage/references/workspace-config.md
 # Personal reminders — edit locally, not committed to git
 skills/triage/references/reminders.md
 
+# Triage exclusion set — machine-generated, personal to each install
+skills/triage/references/exclusion-set.md
+
+# Triage last-run timestamp — machine-generated, personal to each install
+skills/triage/references/last-run-timestamp.md
+
 **/.DS_Store
 .DS_Store
